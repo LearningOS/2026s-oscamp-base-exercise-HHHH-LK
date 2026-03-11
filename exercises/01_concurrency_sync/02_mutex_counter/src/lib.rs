@@ -17,10 +17,24 @@ use std::thread;
 /// Hint: Use `Arc<Mutex<usize>>` as the shared counter.
 pub fn concurrent_counter(n_threads: usize, count_per_thread: usize) -> usize {
     // TODO: Create Arc<Mutex<usize>> with initial value 0
+    let counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
     // TODO: Spawn n_threads threads
     // TODO: In each thread, lock() and increment count_per_thread times
     // TODO: Join all threads, return final value
-    todo!()
+    for _ in 0..n_threads {
+        let counter = Arc::clone(&counter);
+        thread::spawn(move || {
+            for _ in 0..count_per_thread {
+                //获取程序计数器的可变引用。就好比指针一样，*num 就是解引用，获取到实际的值
+               let mut num = counter.lock().unwrap();
+               *num += 1;
+            }
+        }).join().unwrap();
+    }
+
+    let final_count = *counter.lock().unwrap();
+    final_count
+
 }
 
 /// Add elements to a shared vector concurrently using multiple threads.
