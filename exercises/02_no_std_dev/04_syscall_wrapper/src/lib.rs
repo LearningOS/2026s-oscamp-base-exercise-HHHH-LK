@@ -26,7 +26,6 @@
 //! - aarch64 and riscv64 share the unified syscall number table (from asm-generic)
 
 #![cfg_attr(not(test), no_std)]
-
 /// Describes a Linux Syscall ABI for a specific architecture
 pub struct SyscallABI {
     /// Architecture name: "x86_64", "aarch64", "riscv64"
@@ -55,21 +54,63 @@ pub struct SyscallABI {
 pub fn x86_64_abi() -> SyscallABI {
     // TODO: Fill in the x86_64 syscall ABI
     // Hint: x86_64 uses the "syscall" instruction, syscall number in rax
-    todo!()
+    SyscallABI {
+        arch: "x86_64",
+        instruction: "syscall",
+        id_reg: "rax",
+        ret_reg: "rax",
+        arg_regs: &["rdi", "rsi", "rdx", "r10", "r8", "r9"],
+        clobbered: &["rcx", "r11"],
+        sys_read: 0,
+        sys_write: 1,
+        sys_close: 3,
+        sys_exit: 60,
+    }
 }
 
 /// Return the aarch64 Linux syscall ABI description
 pub fn aarch64_abi() -> SyscallABI {
     // TODO: Fill in the aarch64 syscall ABI
     // Hint: aarch64 uses the "svc #0" instruction, syscall number in x8
-    todo!()
+    SyscallABI {
+        arch: "aarch64",
+        instruction: "svc #0",
+        id_reg: "x8",
+        ret_reg: "x0",
+        arg_regs: &["x0", "x1", "x2", "x3", "x4", "x5"],
+        clobbered: &[],
+        sys_read: 63,
+        sys_write: 64,
+        sys_close: 57,
+        sys_exit: 93,
+    }
 }
 
 /// Return the riscv64 Linux syscall ABI description
 pub fn riscv64_abi() -> SyscallABI {
-    // TODO: Fill in the riscv64 syscall ABI
-    // Hint: riscv64 uses the "ecall" instruction, syscall number in a7
-    todo!()
+    SyscallABI {
+        arch: "riscv64",
+        instruction: "ecall",
+        // 1. 系统调用号放在 a7 (对应物理寄存器 x17)
+        id_reg: "a7", 
+        
+        // 2. 返回值放在 a0 (对应物理寄存器 x10)，绝对不是 x0!
+        ret_reg: "a0", 
+        
+        // 3. 参数依次放在 a0, a1, a2, a3, a4, a5
+        // 注意：a0 既用于传入第一个参数，也用于接收返回值
+        arg_regs: &["a0", "a1", "a2", "a3", "a4", "a5"],
+        
+        // 4. ecall 指令本身根据 ABI 不会额外破坏 t0-t6 等临时寄存器
+        // 测试报错提示你声明了多余的 clobbered 寄存器，这里改为空
+        clobbered: &[], 
+        
+        // 系统调用号 (Linux RISC-V 标准)
+        sys_read: 63,
+        sys_write: 64,
+        sys_close: 57,
+        sys_exit: 93,
+    }
 }
 
 // ============================================================
@@ -88,7 +129,17 @@ pub unsafe fn syscall3(id: usize, arg0: usize, arg1: usize, arg2: usize) -> isiz
     //   - inlateout("rax") id => ret
     //   - in("rdi") arg0, in("rsi") arg1, in("rdx") arg2
     //   - out("rcx") _, out("r11") _
-    todo!()
+    let mut ret: isize;
+    use core::arch::asm;
+    asm!("syscall", 
+    inlateout("rax") id => ret,
+    in("rdi") arg0,
+    in("rsi") arg1,
+    in("rdx") arg2,
+    out("rcx") _,
+    out("r11") _,
+    options(nostack) );
+    ret;
 }
 
 #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
@@ -99,7 +150,16 @@ pub unsafe fn syscall3(id: usize, arg0: usize, arg1: usize, arg2: usize) -> isiz
     //   - in("x8") id
     //   - inlateout("x0") arg0 => ret
     //   - in("x1") arg1, in("x2") arg2
-    todo!()
+    let mut ret;
+    core::arch::asm!(
+     "svc #0",
+     in("x8") id,
+     in("x1") arg1,
+     in("x2") arg2,
+     inlateout("x0") arg0 => ret
+    );
+
+    ret
 }
 
 // Non-Linux platforms: provide a stub so the code compiles
@@ -140,25 +200,37 @@ const NATIVE_SYS_EXIT: usize = 0;
 /// Write data from `buf` to file descriptor `fd`.
 pub fn sys_write(fd: usize, buf: &[u8]) -> isize {
     // TODO: Call syscall3 to implement write
-    todo!()
+    unsafe {
+        let ret = syscall3(64, fd, buf.as_ptr() as usize, buf.len());
+        return ret;
+    };
 }
 
 /// Read data from file descriptor `fd` into `buf`.
 pub fn sys_read(fd: usize, buf: &mut [u8]) -> isize {
     // TODO: Call syscall3 to implement read
-    todo!()
+    unsafe {
+        let ret = syscall3(63, fd, buf.as_ptr() as usize, buf.len());
+        return ret;
+    }
 }
 
 /// Close file descriptor `fd`.
 pub fn sys_close(fd: usize) -> isize {
     // TODO: Call syscall3 to implement close
-    todo!()
+    unsafe {
+        let ret = syscall3(57, fd, 0, 0);
+        return ret;
+    }
 }
 
 /// Terminate the current process.
 pub fn sys_exit(code: i32) -> ! {
     // TODO: Call syscall3 to implement exit
-    todo!()
+    unsafe {
+        syscall3(93, code.try_into().unwrap(), 0, 0);
+    }
+    panic!("Exit failed !");
 }
 
 // ============================================================
