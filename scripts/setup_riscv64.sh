@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+y#!/usr/bin/env bash
 # 一键安装第四章（上下文切换）所需环境；缺什么就尝试安装什么。
 # 可由 check.sh 在跑第四章前自动调用，也可在仓库根目录手动执行：bash scripts/setup_riscv64.sh
 
