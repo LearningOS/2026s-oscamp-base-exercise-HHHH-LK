@@ -14,7 +14,6 @@
 //! thread B will see all writes that thread A performed before the Release.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-
 /// Use Release-Acquire semantics to safely pass data between two threads.
 ///
 /// `produce` writes data first, then sets flag with Release;

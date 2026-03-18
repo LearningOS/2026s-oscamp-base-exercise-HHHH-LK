@@ -8,7 +8,10 @@
 //! - `compare_exchange` lock‑free primitive
 //! - `Ordering` memory ordering
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+    thread::current,
+};
 
 pub struct AtomicCounter {
     value: AtomicU64,
@@ -26,19 +29,20 @@ impl AtomicCounter {
     /// Hint: use `fetch_add` with `Ordering::Relaxed`
     pub fn increment(&self) -> u64 {
         // TODO
-        todo!()
+        let fetch_add_res = self.value.fetch_add(1, Ordering::Relaxed);
+        fetch_add_res
     }
 
     /// Atomically decrements by 1, returns the value **before** decrement.
     pub fn decrement(&self) -> u64 {
-        // TODO
-        todo!()
+        let fetch_decrement_res = self.value.fetch_sub(1, Ordering::Relaxed);
+        fetch_decrement_res
     }
 
     /// Gets the current value.
     pub fn get(&self) -> u64 {
-        // TODO
-        todo!()
+        let res = self.value.load(Ordering::Relaxed);
+        res
     }
 
     /// Atomic CAS (Compare-And-Swap) operation.
@@ -47,8 +51,22 @@ impl AtomicCounter {
     ///
     /// Hint: use `compare_exchange` with success ordering `Ordering::AcqRel` and failure ordering `Ordering::Acquire`
     pub fn compare_and_swap(&self, expected: u64, new_val: u64) -> Result<u64, u64> {
-        // TODO
-        todo!()
+        loop {
+            let current_data = self.value.load(Ordering::Relaxed);
+
+            if current_data != expected {
+                return Err(current_data);
+            }
+            match self.value.compare_exchange(
+                current_data,
+                new_val,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(s) => return Ok(s),
+                Err(s) => return Err(s),
+            }
+        }
     }
 
     /// Multiply the value atomically using a CAS loop.
@@ -62,7 +80,19 @@ impl AtomicCounter {
         //     let new = current * multiplier;
         //     match self.compare_and_swap(current, new) { ... }
         // }
-        todo!()
+        loop {
+            //先进行读
+            let current_data = self.value.load(Ordering::Relaxed);
+            //进行计算
+            let var = current_data * multiplier;
+            //设置成原子操作（内部current_data 是用来进行对比的
+            //系统会自动获取对应的value值 来和 current_data 进行比较 看是否发生变化 若变化 则就是 error 若没有则进行修改）
+            let res = self.compare_and_swap(current_data, var);
+            return match res {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+        }
     }
 }
 
