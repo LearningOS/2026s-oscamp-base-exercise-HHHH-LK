@@ -13,7 +13,10 @@
 //! When thread A writes with Release, and thread B reads the same location with Acquire,
 //! thread B will see all writes that thread A performed before the Release.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::{
+    sync::atomic::{AtomicBool, AtomicU32, Ordering},
+    thread::sleep_ms,
+};
 /// Use Release-Acquire semantics to safely pass data between two threads.
 ///
 /// `produce` writes data first, then sets flag with Release;
@@ -39,7 +42,8 @@ impl FlagChannel {
     pub fn produce(&self, value: u32) {
         // TODO: Store data (choose appropriate Ordering)
         // TODO: Set ready = true (choose appropriate Ordering so data writes complete before this)
-        todo!()
+        self.data.store(value, Ordering::Release);
+        self.ready.store(true, Ordering::Release);
     }
 
     /// Consumer: spin-wait for ready flag, then read data.
@@ -50,7 +54,11 @@ impl FlagChannel {
     pub fn consume(&self) -> u32 {
         // TODO: Spin-wait for ready to become true (choose appropriate Ordering)
         // TODO: Read data (choose appropriate Ordering)
-        todo!()
+        //等待数据处理完毕
+        while !self.ready.load(Ordering::Acquire) {}
+        //执行读取操作
+        let res = self.data.load(Ordering::Acquire);
+        res
     }
 
     /// Reset channel state
@@ -82,13 +90,27 @@ impl OnceCell {
     pub fn init(&self, val: u32) -> bool {
         // TODO: Use compare_exchange to ensure initialization only once
         // Store value on success
-        todo!()
+        match self
+            .initialized
+            .compare_exchange(false, true, Ordering::Release, Ordering::Acquire)
+        {
+            Ok(_) => {
+                //进行初始化
+                self.value.store(val, Ordering::Release);
+                return true;
+            }
+            Err(_) => return false,
+        }
     }
 
     /// Get value. Returns Some if initialized, otherwise None.
     pub fn get(&self) -> Option<u32> {
         // TODO: Check initialized flag, then read value
-        todo!()
+        let is_init = self.initialized.load(Ordering::Acquire);
+        match is_init {
+            true => Some(self.value.load(Ordering::Acquire)),
+            false => return None,
+        }
     }
 }
 
