@@ -135,9 +135,37 @@ impl Scheduler {
     /// 1. Allocate a stack of `STACK_SIZE` bytes; compute `stack_top` (high address).
     /// 2. Set up the context: `ra = thread_wrapper` so the first switch jumps to the wrapper;
     ///    `sp` must be 16-byte aligned (e.g. `(stack_top - 16) & !15` to leave headroom).
-    /// 3. Push a `GreenThread` with this context, state `Ready`, and `entry` stored for the wrapper to call.
+    /// 3. Push a `GreenThread` with this context, stateß `Ready`, and `entry` stored for the wrapper to call.
     pub fn spawn(&mut self, entry: extern "C" fn()) {
-        todo!("alloc stack, init ctx with ra=thread_wrapper and aligned sp, push GreenThread(Ready, entry)")
+        //创建一个栈
+        let mut new_stack = vec![0u8;STACK_SIZE];
+        let start_ptr = new_stack.as_ptr() as usize + STACK_SIZE;
+        let correct_stack_ptr = (start_ptr - 16) & !15;
+        //创建上下文存储
+        let mut task_context = TaskContext {
+            sp: correct_stack_ptr,
+            ra: thread_wrapper,
+            s0: 0,
+            s1: 0,
+            s2: 0,
+            s3: 0,
+            s4: 0,
+            s5: 0,
+            s6: 0,
+            s7: 0,
+            s8: 0,
+            s9: 0,
+            s10: 0,
+            s11: 0,
+        };
+        let new_thread = GreenThread {
+            ctx: task_contex,
+            state: ThreadState::Ready,
+            _stack: Some(new_stack),
+            entry: Some(entry),
+        };
+
+        self.threads.push(new_thread);
     }
 
     /// Run the scheduler until all threads (except the main one) are `Finished`.
