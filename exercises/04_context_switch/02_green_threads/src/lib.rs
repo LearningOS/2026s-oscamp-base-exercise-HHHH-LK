@@ -253,7 +253,9 @@ impl Scheduler {
         //2.3 执行上下文切换
         unsafe {
             let old_ptr = &mut self.threads[old_current].ctx as *mut TaskContext;
+            // *const 表示可变指针
             let new_ptr = &self.threads[reall_next].ctx as *const TaskContext;
+            //在一个生命周期中不能存在可变引用以及不可变引用 ，因此 可以私用 指针来骗过 编译器
             switch_context(&mut *old_ptr, &*new_ptr);
         }
     }
