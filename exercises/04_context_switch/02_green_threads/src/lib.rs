@@ -17,6 +17,7 @@
 #![cfg(target_arch = "riscv64")]
 
 use core::arch::naked_asm;
+use std::os::unix::thread;
 
 /// Per-thread stack size. Slightly larger to avoid overflow under QEMU / test harness.
 const STACK_SIZE: usize = 1024 * 128;
@@ -138,13 +139,13 @@ impl Scheduler {
     /// 3. Push a `GreenThread` with this context, stateß `Ready`, and `entry` stored for the wrapper to call.
     pub fn spawn(&mut self, entry: extern "C" fn()) {
         //创建一个栈
-        let mut new_stack = vec![0u8;STACK_SIZE];
+        let mut new_stack = vec![0u8; STACK_SIZE];
         let start_ptr = new_stack.as_ptr() as usize + STACK_SIZE;
         let correct_stack_ptr = (start_ptr - 16) & !15;
         //创建上下文存储
         let mut task_context = TaskContext {
-            sp: correct_stack_ptr,
-            ra: thread_wrapper,
+            sp: correct_stack_ptr as u64,
+            ra: thread_wrapper as u64,
             s0: 0,
             s1: 0,
             s2: 0,
@@ -159,7 +160,7 @@ impl Scheduler {
             s11: 0,
         };
         let new_thread = GreenThread {
-            ctx: task_contex,
+            ctx: task_context,
             state: ThreadState::Ready,
             _stack: Some(new_stack),
             entry: Some(entry),
@@ -174,12 +175,87 @@ impl Scheduler {
     /// 2. Loop: if all threads in `threads[1..]` are `Finished`, break; otherwise call `schedule_next()` (which may switch away and later return).
     /// 3. Clear `SCHEDULER` when done.
     pub fn run(&mut self) {
-        todo!("set SCHEDULER to self, loop until threads[1..] all Finished, call schedule_next, then clear SCHEDULER")
+        //定义全局变量
+        unsafe {
+            SCHEDULER = self as *mut Scheduler;
+        }
+
+        loop {
+            let mut is_all_ok = true;
+            for i in 1..self.threads.len() {
+                if self.threads[i].state != ThreadState::Finished {
+                    is_all_ok = false;
+                    break;
+                }
+            }
+
+            if is_all_ok {
+                break;
+            }
+
+            self.schedule_next();
+        }
+
+        unsafe {
+            SCHEDULER = std::ptr::null_mut();
+        }
     }
 
     /// Find the next ready thread (starting from `current + 1` round-robin), mark current as `Ready` (if not `Finished`), mark next as `Running`, set `CURRENT_THREAD_ENTRY` if the next thread has an entry, then switch to it.
     fn schedule_next(&mut self) {
-        todo!("round-robin find next Ready, set current Ready (if not Finished), next Running, CURRENT_THREAD_ENTRY, then switch_context")
+        //1.校验
+        let len = self.threads.len();
+        if len <= 1 {
+            return;
+        }
+
+        //2.找到下一个就绪的线程（轮询调度）
+        let old_current = self.current;
+        let mut next = None;
+
+        // 从 current + 1 开始查找，排除主线程(index 0)
+        for i in 1..len {
+            let idx = (old_current + i) % len;
+            if idx != 0 && self.threads[idx].state == ThreadState::Ready {
+                next = Some(idx);
+                break;
+            }
+        }
+
+        // 如果没有 Ready 的线程，切回主线程
+        let reall_next = match next {
+            Some(idx) => idx,
+            None => 0,
+        };
+
+        // 如果当前是主线程且没有 Ready 的工作线程，直接返回
+        if old_current == 0 && reall_next == 0 {
+            return;
+        }
+
+        //2.2 修改进程状态
+        if self.threads[old_current].state != ThreadState::Finished {
+            self.threads[old_current].state = ThreadState::Ready;
+        }
+
+        // 设置新线程的入口和状态
+        if reall_next != 0 {
+            unsafe {
+                if self.threads[reall_next].entry.is_some() {
+                    CURRENT_THREAD_ENTRY = self.threads[reall_next].entry.take();
+                }
+            }
+            self.threads[reall_next].state = ThreadState::Running;
+        }
+
+        self.current = reall_next;
+
+        //2.3 执行上下文切换
+        unsafe {
+            let old_ptr = &mut self.threads[old_current].ctx as *mut TaskContext;
+            let new_ptr = &self.threads[reall_next].ctx as *const TaskContext;
+            switch_context(&mut *old_ptr, &*new_ptr);
+        }
     }
 }
 
