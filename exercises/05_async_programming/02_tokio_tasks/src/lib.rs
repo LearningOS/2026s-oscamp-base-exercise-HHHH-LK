@@ -7,6 +7,9 @@
 //! - `JoinHandle` 用于等待任务完成
 //! - 异步任务之间的并发执行
 
+use std::time::Instant;
+
+use tokio::spawn;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
@@ -41,7 +44,27 @@ pub async fn parallel_sleep_tasks(n: usize, duration_ms: u64) -> Vec<usize> {
     // TODO: 为 0..n 中的每个 id 创建一个异步任务
     // TODO: 每个任务 sleep 指定时长后返回自己的 id
     // TODO: 收集所有结果并排序
-    todo!()
+    let mut handle_items: Vec<JoinHandle<usize>> = Vec::new();
+    let start = Instant::now();
+    for i in 0..n {
+        let spawn = spawn(async move {
+            let _ = sleep(Duration::from_millis(duration_ms));
+            return i;
+        });
+        handle_items.push(spawn);
+    }
+
+    let mut items: Vec<usize> = Vec::new();
+
+    for handle in handle_items {
+        items.push(handle.await.unwrap());
+    }
+
+    let end = Instant::now();
+    let total = end - start;
+    /*  println!("{:?}", total); */
+    items.sort();
+    items
 }
 
 #[cfg(test)]
