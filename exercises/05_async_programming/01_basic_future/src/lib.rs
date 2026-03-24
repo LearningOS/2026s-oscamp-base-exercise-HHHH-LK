@@ -1,18 +1,19 @@
-//! # Manual Future Implementation
+//! # 手动实现 Future
 //!
-//! In this exercise, you will manually implement the `Future` trait for custom types to understand the core mechanism of asynchronous runtime.
+//! 在本练习中，您将手动为自定义类型实现 `Future` trait，以理解异步运行时的核心机制。
 //!
-//! ## Concepts
+//! ## 概念
 //! - `std::future::Future` trait
-//! - `Poll::Ready` and `Poll::Pending`
-//! - The role of `Waker`: notifying the runtime to poll again
+//! - `Poll::Ready` 和 `Poll::Pending`
+//! - `Waker` 的作用：通知运行时再次轮询
 
 use std::future::Future;
+use std::io::Seek;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-/// Countdown Future: decrements count by 1 each time it's polled,
-/// returns `"liftoff!"` when count reaches 0.
+/// 倒计时 Future：每次轮询时 count 减 1，
+/// 当 count 达到 0 时返回 `"liftoff!"`。
 pub struct CountDown {
     pub count: u32,
 }
@@ -23,22 +24,30 @@ impl CountDown {
     }
 }
 
-// TODO: Implement Future trait for CountDown
-// - Output type is &'static str
-// - Each poll: if count == 0, return Poll::Ready("liftoff!")
-// - Otherwise count -= 1, call cx.waker().wake_by_ref(), return Poll::Pending
+// TODO: 为 CountDown 实现 Future trait
+// - 输出类型是 &'static str
+// - 每次 poll：如果 count == 0，返回 Poll::Ready("liftoff!")
+// - 否则 count -= 1，调用 cx.waker().wake_by_ref()，返回 Poll::Pending
 //
-// Hint: Use `self.get_mut()` to get `&mut Self` (since self is Pin<&mut Self>)
+// 提示：使用 `self.get_mut()` 获取 `&mut Self`（因为 self 是 Pin<&mut Self>）
 impl Future for CountDown {
     type Output = &'static str;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        todo!()
+        let count_down = self.get_mut();
+        if count_down.count == 0 {
+            return Poll::Ready("liftoff!");
+        } else {
+            count_down.count -= 1;
+            // 当调用 cx.waker().wake_by_ref() 时，执行器会安排该任务稍后被再次 poll。
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
     }
 }
 
-/// Yield-only-once Future: first poll returns Pending, second returns Ready(()).
-/// This is the minimal example of an asynchronous state machine.
+/// 只 yield 一次的 Future：第一次轮询返回 Pending，第二次返回 Ready(())。
+/// 这是异步状态机的最小示例。
 pub struct YieldOnce {
     yielded: bool,
 }
@@ -49,15 +58,22 @@ impl YieldOnce {
     }
 }
 
-// TODO: Implement Future trait for YieldOnce
-// - Output type is ()
-// - First poll: set yielded = true, wake waker, return Pending
-// - Second poll: return Ready(())
+// TODO: 为 YieldOnce 实现 Future trait
+// - 输出类型是 ()
+// - 第一次 poll：设置 yielded = true，唤醒 waker，返回 Pending
+// - 第二次 poll：返回 Ready(())
 impl Future for YieldOnce {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        todo!()
+        let used = self.get_mut();
+        if used.yielded {
+            return Poll::Ready(());
+        } else {
+            used.yielded = true;
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
     }
 }
 
